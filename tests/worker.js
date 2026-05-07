@@ -3,7 +3,7 @@
 "use strict";
 
 const path    = require("path");
-const randomx = require(path.join(__dirname, 'index.js'));
+const randomx = require(path.join(__dirname, "..", "index.js"));
 
 // compute core wrapper for cluster process fork
 if (randomx.cluster_process()) return;

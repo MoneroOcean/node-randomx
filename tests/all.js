@@ -8,11 +8,12 @@ const fs = require("node:fs");
 const nodeTest = require("node:test");
 const path = require("node:path");
 
+const ROOT_DIR = path.join(__dirname, "..");
 const DEFAULT_BLOB_HEX = "0305A0DBD6BF05CF16E503F3A66F78007CBF34144332ECBFC22ED95C8700383B309ACE1923A0964B00000008BA939A62724C0D7581FCE5761E9D8A0E6A1C3F924FDD8493D1115649C05EB601";
 const DEFAULT_SEED_HEX = "3132333435363738393031323334353637383930313233343536373839303132";
 const NATIVE_PATHS = [
-  path.join(__dirname, "node-randomx.node"),
-  path.join(__dirname, "build", "Release", "node-randomx.node"),
+  path.join(ROOT_DIR, "node-randomx.node"),
+  path.join(ROOT_DIR, "build", "Release", "node-randomx.node"),
 ];
 
 function hasNativeAddon() {
@@ -23,10 +24,10 @@ function ensureNativeBuild() {
   if (hasNativeAddon()) return;
 
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const hasDependencies = fs.existsSync(path.join(__dirname, "node_modules", "nan"));
+  const hasDependencies = fs.existsSync(path.join(ROOT_DIR, "node_modules", "nan"));
   const args = hasDependencies ? ["rebuild"] : ["install", "--no-package-lock"];
   const result = child_process.spawnSync(npm, args, {
-    cwd: __dirname,
+    cwd: ROOT_DIR,
     stdio: "inherit",
   });
 
@@ -69,13 +70,13 @@ function failureMessage(job, args, reason, output) {
 function test(job, result) {
   const normalizedJob = normalizeJob(job);
   const expected = Array.isArray(result) ? result : [result];
-  const args = ["test.js", JSON.stringify(normalizedJob), ...expected];
+  const args = [path.join("tests", "worker.js"), JSON.stringify(normalizedJob), ...expected];
 
   return new Promise((resolve, reject) => {
     child_process.execFile(
       process.execPath,
       args,
-      { cwd: __dirname, timeout: 5 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 },
+      { cwd: ROOT_DIR, timeout: 5 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 },
       (error, stdout, stderr) => {
         const output = `${stdout}${stderr}`;
 
