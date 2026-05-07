@@ -61,6 +61,43 @@
 	.global DECL(randomx_calc_dataset_item_aarch64_store_result)
 	.global DECL(randomx_calc_dataset_item_aarch64_end)
 
+# node-randomx local change start:
+# XMRig links these labels into the miner binary. node-randomx copies this code
+# out of a shared object, and default-visible AArch64 symbols can be routed
+# through PLT/GOT indirections that break copied JIT snippets. Hide the local
+# labels on ELF so the assembler emits direct relocations inside the copied
+# code region.
+#if !defined(__APPLE__)
+	.hidden DECL(randomx_program_aarch64)
+	.hidden DECL(randomx_program_aarch64_main_loop)
+	.hidden DECL(randomx_program_aarch64_vm_instructions)
+	.hidden DECL(randomx_program_aarch64_imul_rcp_literals_end)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end)
+	.hidden DECL(randomx_program_aarch64_cacheline_align_mask1)
+	.hidden DECL(randomx_program_aarch64_cacheline_align_mask2)
+	.hidden DECL(randomx_program_aarch64_update_spMix1)
+	.hidden DECL(randomx_program_aarch64_v2_FE_mix)
+	.hidden DECL(randomx_program_aarch64_v1_FE_mix)
+	.hidden DECL(randomx_program_aarch64_v2_FE_mix_soft_aes)
+	.hidden DECL(randomx_program_aarch64_aes_lut_pointers)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end_light)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end_light_tweak)
+	.hidden DECL(randomx_program_aarch64_light_cacheline_align_mask)
+	.hidden DECL(randomx_program_aarch64_light_dataset_offset)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end_v1)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end_v2)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end_light_v1)
+	.hidden DECL(randomx_program_aarch64_vm_instructions_end_light_v2)
+	.hidden DECL(randomx_init_dataset_aarch64)
+	.hidden DECL(randomx_init_dataset_aarch64_end)
+	.hidden DECL(randomx_calc_dataset_item_aarch64)
+	.hidden DECL(randomx_calc_dataset_item_aarch64_prefetch)
+	.hidden DECL(randomx_calc_dataset_item_aarch64_mix)
+	.hidden DECL(randomx_calc_dataset_item_aarch64_store_result)
+	.hidden DECL(randomx_calc_dataset_item_aarch64_end)
+#endif
+# node-randomx local change end
+
 # Register allocation
 
 # x0  -> pointer to reg buffer and then literal for IMUL_RCP

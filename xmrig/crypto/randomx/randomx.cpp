@@ -50,7 +50,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <cassert>
 
 #include "crypto/rx/Profiler.h"
-#include "base/net/stratum/Job.h"
+
+/* node-randomx local change start:
+ * Upstream uses xmrig::Job::kMaxBlobSize for RandomX v2 commitments. The addon
+ * does not vendor the full stratum Job stack, so keep the same maximum blob
+ * size locally and avoid pulling unrelated miner networking code into builds.
+ */
+namespace {
+constexpr size_t kMaxBlobSize = 408;
+}
+/* node-randomx local change end */
 
 RandomX_ConfigurationMoneroV2::RandomX_ConfigurationMoneroV2()
 {
@@ -491,6 +500,13 @@ extern "C" {
 		static size_t vm_pool_offset[64] = {};
 
 		constexpr size_t VM_POOL_SIZE = 2 * 1024 * 1024;
+		/* node-randomx local change start:
+		 * The AArch64 JIT code copied from this shared object expects aligned
+		 * VM objects/literal areas. Align pool placements so full-memory JIT
+		 * works in a Node addon shared library just like it does in xmrig.
+		 */
+		constexpr size_t VM_POOL_ALIGNMENT = 64;
+		/* node-randomx local change end */
 
 		if (node >= 64) {
 			node = 0;
@@ -503,7 +519,9 @@ extern "C" {
 			}
 		}
 
-
+		/* node-randomx local change start: align each VM placement inside the shared pool for AArch64 JIT copies. */
+		vm_pool_offset[node] = (vm_pool_offset[node] + VM_POOL_ALIGNMENT - 1) & ~(VM_POOL_ALIGNMENT - 1);
+		/* node-randomx local change end */
 		void* p = vm_pool[node] + vm_pool_offset[node];
 		size_t vm_size = 0;
 
@@ -569,7 +587,9 @@ extern "C" {
 		}
 
 		if (vm) {
-			vm_pool_offset[node] += vm_size;
+			/* node-randomx local change start: keep the next shared-pool VM placement aligned for copied JIT code. */
+			vm_pool_offset[node] += (vm_size + VM_POOL_ALIGNMENT - 1) & ~(VM_POOL_ALIGNMENT - 1);
+			/* node-randomx local change end */
 			if (vm_pool_offset[node] + 4096 > VM_POOL_SIZE) {
 				vm_pool_offset[node] = 0;
 			}
@@ -631,7 +651,9 @@ extern "C" {
 	}
 
 	void randomx_calculate_commitment(const void* input, size_t inputSize, const void* hash_in, void* com_out) {
-		uint8_t buf[xmrig::Job::kMaxBlobSize + RANDOMX_HASH_SIZE];
+		/* node-randomx local change start: use the local max blob size because the addon does not vendor xmrig::Job. */
+		uint8_t buf[kMaxBlobSize + RANDOMX_HASH_SIZE];
+		/* node-randomx local change end */
 		memcpy(buf, input, inputSize);
 		memcpy(buf + inputSize, hash_in, RANDOMX_HASH_SIZE);
 		rx_blake2b_wrapper::run(com_out, RANDOMX_HASH_SIZE, buf, inputSize + RANDOMX_HASH_SIZE);

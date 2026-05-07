@@ -24,9 +24,13 @@
 #include <functional>
 #include <vector>
 
-
-#include "3rdparty/rapidjson/fwd.h"
-
+/* node-randomx local change start:
+ * This addon vendors only the XMRig hashing/runtime files it needs, without
+ * RapidJSON or the miner configuration layer. Keep Algorithm free of the JSON
+ * API include so this minimal source set can compile standalone.
+ */
+#include <stdint.h>
+/* node-randomx local change end */
 
 namespace xmrig {
 
@@ -140,7 +144,7 @@ public:
 #   ifdef XMRIG_ALGO_RANDOMX
     static const char *kRX;
     static const char *kRX_0;
-    static const char* kRX_V2;
+    static const char *kRX_V2;
     static const char *kRX_WOW;
     static const char *kRX_ARQ;
     static const char *kRX_GRAFT;
@@ -168,7 +172,11 @@ public:
     inline Algorithm() = default;
     inline Algorithm(const char *algo) : m_id(parse(algo))  {}
     inline Algorithm(Id id) : m_id(id)                      {}
-    Algorithm(const rapidjson::Value &value);
+    /* node-randomx local change start:
+     * Upstream declares RapidJSON constructor/serialization methods here.
+     * They are intentionally omitted because node-randomx parses algorithm
+     * names in its JS/native wrapper and does not vendor RapidJSON.
+     * node-randomx local change end */
     Algorithm(uint32_t id);
 
     static inline constexpr bool isCN(Id id)                { return (id & 0xff000000) == CN_ANY; }
@@ -196,8 +204,10 @@ public:
     inline operator Algorithm::Id() const                   { return m_id; }
 
     const char *name() const;
-    rapidjson::Value toJSON() const;
-    rapidjson::Value toJSON(rapidjson::Document &doc) const;
+    /* node-randomx local change start:
+     * Upstream declares RapidJSON toJSON methods here. They are intentionally
+     * omitted because node-randomx does not vendor RapidJSON.
+     * node-randomx local change end */
 
     static Id parse(const char *name);
     static size_t count();

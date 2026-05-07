@@ -151,6 +151,15 @@ void *xmrig::VirtualMemory::allocateExecutableMemory(size_t size, bool hugePages
 
     if (hugePages) {
         mem = mmap(0, size, PROT_READ | PROT_WRITE | SECURE_PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_ALIGNED_SUPER | MAP_PREFAULT_READ, -1, 0);
+        /* node-randomx local change start:
+         * XMRig runs as a miner and can keep huge-page allocation failures
+         * isolated. The Node addon must retry normal executable pages when
+         * huge executable pages are unavailable, otherwise JIT VM creation
+         * fails on hosts without configured huge pages.
+         * node-randomx local change end */
+        if (mem == MAP_FAILED) {
+            mem = nullptr;
+        }
     }
 
     if (!mem) {
@@ -164,6 +173,15 @@ void *xmrig::VirtualMemory::allocateExecutableMemory(size_t size, bool hugePages
 
     if (hugePages) {
         mem = mmap(0, align(size), PROT_READ | PROT_WRITE | SECURE_PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | hugePagesFlag(hugePageSize()), -1, 0);
+        /* node-randomx local change start:
+         * XMRig runs as a miner and can keep huge-page allocation failures
+         * isolated. The Node addon must retry normal executable pages when
+         * huge executable pages are unavailable, otherwise JIT VM creation
+         * fails on hosts without configured huge pages.
+         * node-randomx local change end */
+        if (mem == MAP_FAILED) {
+            mem = nullptr;
+        }
     }
 
     if (!mem) {
