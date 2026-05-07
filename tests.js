@@ -2,51 +2,104 @@
 
 "use strict";
 
-const child_process = require("child_process");
+const assert = require("node:assert/strict");
+const child_process = require("node:child_process");
+const fs = require("node:fs");
+const nodeTest = require("node:test");
+const path = require("node:path");
 
-function test(job, result, cb) {
-  if (!("dev" in job))      job.dev      = "cpu";
-  if (!("blob_hex" in job)) job.blob_hex = "0305A0DBD6BF05CF16E503F3A66F78007CBF34144332ECBFC22ED95C8700383B309ACE1923A0964B00000008BA939A62724C0D7581FCE5761E9D8A0E6A1C3F924FDD8493D1115649C05EB601";
-  if (!("seed_hex" in job)) job.seed_hex = "3132333435363738393031323334353637383930313233343536373839303132";
-  const cmd = "node test.js '" + JSON.stringify(job) + "' " + (Array.isArray(result) ? result.join(' ') : result);
-  let output = "";
-  const fail = function(message) {
-    console.log("FAILED: " + job.dev + " " + job.algo + ": ");
-    console.log("$ " + cmd);
-    console.log(message);
-    console.log(output);
-    return cb(false);
-  };
+const DEFAULT_BLOB_HEX = "0305A0DBD6BF05CF16E503F3A66F78007CBF34144332ECBFC22ED95C8700383B309ACE1923A0964B00000008BA939A62724C0D7581FCE5761E9D8A0E6A1C3F924FDD8493D1115649C05EB601";
+const DEFAULT_SEED_HEX = "3132333435363738393031323334353637383930313233343536373839303132";
+const NATIVE_PATHS = [
+  path.join(__dirname, "node-randomx.node"),
+  path.join(__dirname, "build", "Release", "node-randomx.node"),
+];
 
-  let test_process = null;
-  let timeout = setTimeout(function() {
-    if (!test_process) return; // already failed or passed before
-    test_process.kill();
-    test_process = null;
-    return fail("Timeouted");
-  }, 5*60*1000);
+function hasNativeAddon() {
+  return NATIVE_PATHS.some((file) => fs.existsSync(file));
+}
 
-  test_process = child_process.exec(cmd);
-  test_process.stdout.on('data', function(data) { output += data; });
-  test_process.stderr.on('data', function(data) { output += data; });
-  test_process.on('exit', function(code) {
-    if (!test_process) return; // already failed or passed before
-    clearTimeout(timeout);
-    test_process = null;
-    if (code) {
-      return fail("Non zero exit code: " + code);
-    } else if (!output.includes("PASSED") || output.includes("FAIL")) {
-      return fail("No PASSED in the test output:");
-    } else {
-      console.log("PASSED: " + job.dev + " " + job.algo);
-      return cb(true);
-    }
+function ensureNativeBuild() {
+  if (hasNativeAddon()) return;
+
+  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  const hasDependencies = fs.existsSync(path.join(__dirname, "node_modules", "nan"));
+  const args = hasDependencies ? ["rebuild"] : ["install", "--no-package-lock"];
+  const result = child_process.spawnSync(npm, args, {
+    cwd: __dirname,
+    stdio: "inherit",
   });
-  test_process.on('error', function(err) {
-    if (!test_process) return; // already failed or passed before
-    clearTimeout(timeout);
-    test_process = null;
-    return fail("Error: " + err);
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0 || !hasNativeAddon()) {
+    throw new Error("Unable to build node-randomx native addon");
+  }
+}
+
+function normalizeJob(job) {
+  return {
+    dev: "cpu",
+    blob_hex: DEFAULT_BLOB_HEX,
+    seed_hex: DEFAULT_SEED_HEX,
+    ...job,
+  };
+}
+
+function shellQuote(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:=@+-]+$/.test(text)) return text;
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+function commandText(args) {
+  return [process.execPath, ...args].map(shellQuote).join(" ");
+}
+
+function failureMessage(job, args, reason, output) {
+  return [
+    `${job.dev} ${job.algo} failed: ${reason}`,
+    `$ ${commandText(args)}`,
+    output.trimEnd(),
+  ].filter(Boolean).join("\n");
+}
+
+function test(job, result) {
+  const normalizedJob = normalizeJob(job);
+  const expected = Array.isArray(result) ? result : [result];
+  const args = ["test.js", JSON.stringify(normalizedJob), ...expected];
+
+  return new Promise((resolve, reject) => {
+    child_process.execFile(
+      process.execPath,
+      args,
+      { cwd: __dirname, timeout: 5 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        const output = `${stdout}${stderr}`;
+
+        if (error) {
+          const reason = error.killed
+            ? "Timed out"
+            : error.signal
+              ? `Signal ${error.signal}`
+              : `Exit code ${error.code}`;
+          reject(new Error(failureMessage(normalizedJob, args, reason, output)));
+          return;
+        }
+
+        try {
+          assert.match(output, /PASSED/, failureMessage(normalizedJob, args, "No PASSED in test output", output));
+          assert.doesNotMatch(output, /FAIL/, failureMessage(normalizedJob, args, "FAIL appeared in test output", output));
+        } catch (assertionError) {
+          reject(assertionError);
+          return;
+        }
+
+        resolve();
+      }
+    );
   });
 }
 
@@ -54,6 +107,10 @@ let tests = [
   [ test, { algo: "rx/0", dev: "cpu*2", blob_hex: "5468697320697320612074657374\n00" },
     [ "38f638606c730dd6f271d037556b83988c71acc6980e22e25271b22389ecfce6",
       "f4d7978d385b7d79788aed32cf9e08d2782bc3c47ab50cae69c0dfba3a3bd1d7"
+    ]
+  ], [ test, { algo: "rx/2", dev: "cpu*2", blob_hex: "5468697320697320612074657374\n00" },
+    [ "329a16176b038502ba70e2350e61809227f247dacab444591ea2c21a9745b0fa",
+      "3debd156210ca7b1eefb2e22c657ec68fa7d9859466cc809213788d741b33a02"
     ]
   ], [ test, { algo: "rx/wow", blob_hex: "5468697320697320612074657374" },
     "15c9bd99b3180ab256e89beecaf7b693abb7cdb0d1dfe30020c72f0c70b904ce"
@@ -122,30 +179,9 @@ let tests = [
   ],
 ];
 
-// repeat while cb_next is called returns true result with ms delay
-function repeat(cb_next, delay) {
-  cb_next(function() {
-    if (delay) setTimeout(repeat, delay, cb_next, delay);
-    else return repeat(cb_next, delay);
-  });
-};
+ensureNativeBuild();
 
-let test_count = 0;
-let fail_count = 0;
-
-// do opt.algo_params benchmarks if perf === null
-repeat(function(cb_next) {
-  let test = tests.shift();
-  if (test) {
-    ++ test_count;
-    test[0](test[1], test[2], function(result) {
-      if (!result) ++ fail_count;
-      return cb_next();
-    });
-  } else {
-    console.log(fail_count ? "FAILED (" + fail_count + " of " + test_count + " tests)" :
-                             "PASSED (" + test_count + " tests)");
-    process.exit(fail_count ? 1 : 0);
-  }
-});
-
+for (const [runner, job, result] of tests) {
+  const normalizedJob = normalizeJob(job);
+  nodeTest(`${normalizedJob.dev} ${normalizedJob.algo}`, () => runner(job, result));
+}

@@ -1,5 +1,5 @@
 { "targets": [
-  { "target_name": "fast-rx",
+  { "target_name": "node-randomx",
     "sources": [
       "moner-core.cpp",
       "moner-job.cpp",
@@ -15,7 +15,7 @@
       "xmrig/crypto/cn/c_groestl.c",
       "xmrig/crypto/cn/c_jh.c",
       "xmrig/crypto/cn/c_skein.c",
-      "xmrig/crypto/cn/r/CryptonightR_gen.cpp",
+      '<!@(./test-cpu.sh x86_64 && echo "xmrig/crypto/cn/r/CryptonightR_gen.cpp" || echo)',
 
       "xmrig/crypto/randomx/aes_hash.cpp",
       "xmrig/crypto/randomx/bytecode_machine.cpp",
@@ -75,13 +75,14 @@
       '     echo "xmrig/3rdparty/argon2/arch/x86_64/lib/argon2-sse2.c"'
       '     echo "xmrig/crypto/randomx/blake2/blake2b_sse41.c"'
       '     echo "xmrig/crypto/randomx/blake2/avx2/blake2b_avx2.c"'
-      '     echo "xmrig/crypto/rx/RxFix_linux.c"'
+      '     echo "xmrig/crypto/rx/RxFix_linux.cpp"'
       '     echo "xmrig/crypto/cn/asm/cn_main_loop.S"'
       '     echo "xmrig/crypto/cn/asm/CryptonightR_template.S"'
       '     echo "xmrig/crypto/randomx/jit_compiler_x86_static.S"'
       '     echo "xmrig/crypto/randomx/jit_compiler_x86.cpp"'
       '   ) || ('
       '     echo "xmrig/backend/cpu/platform/BasicCpuInfo_arm.cpp"'
+      '     ; if [ "$(uname -s)" = "Darwin" ]; then echo "xmrig/backend/cpu/platform/BasicCpuInfo_arm_mac.cpp"; else echo "xmrig/backend/cpu/platform/BasicCpuInfo_arm_unix.cpp"; fi ;'
       '     echo "xmrig/3rdparty/argon2/arch/generic/lib/argon2-arch.c"'
       '     echo "xmrig/crypto/randomx/jit_compiler_a64_static.S"'
       '     echo "xmrig/crypto/randomx/jit_compiler_a64.cpp"'
@@ -96,6 +97,7 @@
     "cflags!": [ "-O3" ],
     "cflags_cc!": [ "-std=gnu++1y", "-std=gnu++17", "-fno-exceptions" ],
     "cflags+": [
+      '<!@(./test-cpu.sh arm64 && echo "-DXMRIG_ARM=8" || (./test-cpu.sh arm && echo "-DXMRIG_ARM=7" || echo))',
       '<!@(./test-cpu.sh arm64 &&'
       '     echo "-march=armv8-a+crypto -flax-vector-conversions" || ('
       '       ./test-cpu.sh arm &&'
@@ -111,7 +113,8 @@
       '<!@(./test-cpu.sh sse2    && echo "-DHAVE_SSE2" || echo)',
       '<!@(./test-cpu.sh msr     && echo "-DXMRIG_FEATURE_MSR" || echo)',
       '<!@(./test-cpu.sh vaes    && echo "-DHAVE_VAES" || echo)',
-      "-DNDEBUG -DHAVE_ROTR -DXMRIG_FEATURE_ASM "
+      '<!@(./test-cpu.sh x86_64 && echo "-DHAVE_ROTR -DXMRIG_FEATURE_ASM" || echo)',
+      "-DNDEBUG "
       "-DXMRIG_ALGO_CN_LITE -DXMRIG_ALGO_CN_HEAVY -DXMRIG_ALGO_CN_PICO -DXMRIG_ALGO_CN_FEMTO "
       "-DXMRIG_ALGO_ARGON2 -DXMRIG_ALGO_GHOSTRIDER "
       "-O3 -ffast-math -funroll-loops -fmerge-all-constants"

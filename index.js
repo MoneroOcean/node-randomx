@@ -11,9 +11,9 @@ const thread_id = cluster.isMaster ? "master" : parseInt(process.env["thread_id"
 let worker_ids = []; // active worker ids (cluster.workers can contain not yet closed workers)
 
 module.exports.create_core = function() {
-  const deploy_path = path.join(__dirname, "./fast-rx.node");
+  const deploy_path = path.join(__dirname, "./node-randomx.node");
   const core_path   = fs.existsSync(deploy_path) ? deploy_path :
-                      path.join(__dirname, "/build/Release/fast-rx.node");
+                      path.join(__dirname, "/build/Release/node-randomx.node");
   const core_module = require(core_path);
   let emitter = new events();
   let worker = new core_module.AsyncWorker(

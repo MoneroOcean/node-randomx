@@ -46,6 +46,7 @@ static const std::map<std::string, xmrig::Algorithm::Id> cpu_name2algo = {
   { "argon2/chukwav2", xmrig::Algorithm::AR2_CHUKWA_V2  },
   { "argon2/wrkz",     xmrig::Algorithm::AR2_WRKZ       },
   { "rx/0",            xmrig::Algorithm::RX_0           },
+  { "rx/2",            xmrig::Algorithm::RX_V2          },
   { "rx/wow",          xmrig::Algorithm::RX_WOW         },
   { "rx/arq",          xmrig::Algorithm::RX_ARQ         },
   { "rx/graft",        xmrig::Algorithm::RX_GRAFT       },
@@ -55,6 +56,7 @@ static const std::map<std::string, xmrig::Algorithm::Id> cpu_name2algo = {
 
 static const std::map<std::string, RandomX_ConfigurationBase*> rx_cpu_name2config = {
   { "rx/0",            &RandomX_MoneroConfig  },
+  { "rx/2",            &RandomX_MoneroConfigV2 },
   { "rx/wow",          &RandomX_WowneroConfig },
   { "rx/arq",          &RandomX_ArqmaConfig   },
   { "rx/graft",        &RandomX_GraftConfig   },
@@ -83,7 +85,11 @@ static xmrig::VirtualMemory* alloc_huge_mem(const unsigned size) {
 }
 
 static void* alloc_mem(const unsigned size) {
+#if defined(__ARM_ARCH) || defined(__aarch64__) || defined(__arm64__)
+  void* const mem = aligned_alloc(4096, ((size + 4095) / 4096) * 4096);
+#else
   void* const mem = _mm_malloc(size, 4096);
+#endif
   if (mem) return mem;
   throw std::string("Can't allocate " + std::to_string(size) + " bytes of memory");
 }
@@ -222,28 +228,39 @@ void Core::set_job(
   // new hashing setup (all errors were checked above)
   ++ m_job_ref; // used to stop old m_thread_pool jobs
   const unsigned new_mem_size = algo2mem.at(new_algo_str);
+  const bool is_algo_changed = m_algo_str != new_algo_str;
+  const bool is_seed_changed = m_seed_hex != new_seed_hex;
+  const bool is_rx_job = new_dev == DEV::RX_CPU;
+  const bool was_rx_job = !m_seed_hex.empty();
+
   if (m_batch != new_batch || m_mem_size != new_mem_size ||
-      m_seed_hex != new_seed_hex || m_algo_str != new_algo_str) {
+      is_seed_changed || is_algo_changed) {
     // free previous memory
     free_memory(
       m_batch != new_batch,
       m_mem_size != new_mem_size,
       m_seed_hex.empty() && !new_seed_hex.empty(),
-      !m_seed_hex.empty() && new_seed_hex.empty()
+      (was_rx_job && !is_rx_job) || (was_rx_job && is_rx_job && is_algo_changed)
     );
 
     if (m_lpads == nullptr) m_lpads = alloc_huge_mem(new_batch * new_mem_size);
 
     if (new_dev == DEV::RX_CPU) {
+      if (is_seed_changed || is_algo_changed) {
+        randomx_apply_config(*new_rx_config);
+      }
+
       // setup rx cache, dataset and thread_pool
       if (m_rx_cache_mem == nullptr)
         m_rx_cache_mem = alloc_huge_mem(RANDOMX_CACHE_MAX_SIZE);
       if (m_rx_dataset_mem == nullptr)
         m_rx_dataset_mem = alloc_huge_mem(RANDOMX_DATASET_MAX_SIZE);
       if (m_rx_cache == nullptr) {
-        m_rx_cache = randomx_create_cache(RANDOMX_FLAG_JIT, m_rx_cache_mem->raw());
+        const bool use_rx_cache_jit = true;
+        const bool use_rx_vm_jit = new_algo_str != "rx/2";
+        m_is_rx_jit = use_rx_vm_jit;
+        m_rx_cache = randomx_create_cache(use_rx_cache_jit ? RANDOMX_FLAG_JIT : RANDOMX_FLAG_DEFAULT, m_rx_cache_mem->raw());
         if (m_rx_cache == nullptr) {
-          m_is_rx_jit = false;
           m_rx_cache = randomx_create_cache(RANDOMX_FLAG_DEFAULT, m_rx_cache_mem->raw());
         }
       }
@@ -255,8 +272,7 @@ void Core::set_job(
       }
 
       // recompute cache, dataset for new seed
-      if (m_seed_hex != new_seed_hex || m_algo_str != new_algo_str) {
-        randomx_apply_config(*new_rx_config);
+      if (is_seed_changed || is_algo_changed) {
         randomx_init_cache(m_rx_cache, new_seed, HASH_LEN);
         // init dataset in parallel threads
         const unsigned rx_dataset_item_count = randomx_dataset_item_count(),
@@ -274,10 +290,18 @@ void Core::set_job(
       if (m_vm == nullptr) {
         m_vm = new randomx_vm*[new_batch];
         for (int i = 0; i != new_batch; ++ i) {
+          randomx_cache* const vm_cache = m_rx_dataset == nullptr ? m_rx_cache : nullptr;
           m_vm[i] = randomx_create_vm(
-            get_rx_vm_flags(m_is_rx_jit, m_rx_dataset, m_rx_dataset_mem), m_rx_cache, m_rx_dataset,
+            get_rx_vm_flags(m_is_rx_jit, m_rx_dataset, m_rx_dataset_mem), vm_cache, m_rx_dataset,
             m_lpads->scratchpad() + i * new_mem_size, 0
           );
+          if (m_vm[i] == nullptr && m_is_rx_jit) {
+            m_vm[i] = randomx_create_vm(
+              get_rx_vm_flags(false, m_rx_dataset, m_rx_dataset_mem), vm_cache, m_rx_dataset,
+              m_lpads->scratchpad() + i * new_mem_size, 0
+            );
+          }
+          if (m_vm[i] == nullptr) throw std::string("Unable to create RandomX VM");
         }
       }
     } else { // setup cn stuff
@@ -323,6 +347,18 @@ void Core::set_job(
 	  const unsigned input_len = new_inputs[thread_id].size();
           memcpy(input, new_inputs[thread_id].data(), input_len);
           if (is_set_nonce) { *get_nonce(input) = nonce; nonce += nonce_step; }
+          if (!is_set_nonce) {
+            randomx_calculate_hash(m_vm[thread_id], input, input_len, output);
+
+            char hash[HASH_LEN*2+1];
+            MessageValues values;
+            values["result"] = hash_bin2hex(output, hash);
+            values["input"]  = new_input_hexes[thread_id];
+            values["rx_thread_id"] = std::to_string(thread_id);
+            values["job_id"] = job_id;
+            send_msg("test", values);
+            return;
+          }
           randomx_calculate_hash_first(m_vm[thread_id], temp_hash, input, input_len);
           while (job_ref == m_job_ref) { // continue until we get a new job
             uint32_t* const pnonce = get_nonce(input);

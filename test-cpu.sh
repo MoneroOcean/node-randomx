@@ -2,18 +2,19 @@
 
 set -e
 QUERY="$1"
+ARCH="$(uname -m)"
+
+is_arm64() {
+  [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]
+}
 
 check_mac() {
   case "$1" in
-    msr)     sysctl -n machdep.cpu.features | grep -i msr >/dev/null;;
-    sse2)    sysctl -n machdep.cpu.features | grep -i sse2 >/dev/null;;
-    ssse3)   sysctl -n machdep.cpu.features | grep -i ssse3 >/dev/null;;
-    sse4_1)  sysctl -n machdep.cpu.features | grep -i sse4_1 >/dev/null;;
-    xop)     sysctl -n machdep.cpu.features | grep -i xop >/dev/null;;
-    avx2)    sysctl -n machdep.cpu.features | grep -i avx2 >/dev/null;;
-    avx512f) sysctl -n machdep.cpu.features | grep -i avx512f >/dev/null;;
-    vaes)    sysctl -n machdep.cpu.features | grep -i vaes >/dev/null;;
-    aes)     sysctl -n machdep.cpu.features | grep -i " aes" >/dev/null;;
+    arm64)   is_arm64;;
+    arm)     [ "$ARCH" = "armv7" ];;
+    x86_64)  [ "$ARCH" = "x86_64" ];;
+    msr|sse2|ssse3|sse4_1|xop|avx2|avx512f|vaes) is_arm64 && return 1; sysctl -n machdep.cpu.features | grep -i "$1" >/dev/null;;
+    aes)     is_arm64 && return 0; sysctl -n machdep.cpu.features | grep -i " aes" >/dev/null;;
     *) echo "UNRECOGNISED CHECK $QUERY"; exit 1;;
   esac
 }
@@ -21,7 +22,7 @@ check_mac() {
 check_linux() {
   which cpuinfo >/dev/null && CPUINFO=$(cpuinfo) || CPUINFO=$(cat /proc/cpuinfo)
   case "$1" in
-    arm64)   uname -a | grep "aarch64" >/dev/null;;
+    arm64)   uname -m | grep -E "^(aarch64|arm64)$" >/dev/null;;
     arm)     uname -a | grep "armv7"   >/dev/null;;
     x86_64)  uname -a | grep "x86_64"  >/dev/null;;
     msr)     grep msr      <<<$CPUINFO >/dev/null;;
@@ -41,4 +42,3 @@ case "$(uname -a)" in
   Darwin*) check_mac   "$QUERY";;
   *)       check_linux "$QUERY";;
 esac
-

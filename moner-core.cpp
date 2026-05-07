@@ -99,7 +99,13 @@ void Core::send_last_nonce(const uint32_t nonce, const std::string& pool_id) {
   send_msg("last_nonce", result);
 }
 
-static void free_mem(void* const mem) { _mm_free(mem); }
+static void free_mem(void* const mem) {
+#if defined(__ARM_ARCH) || defined(__aarch64__) || defined(__arm64__)
+  free(mem);
+#else
+  _mm_free(mem);
+#endif
+}
 
 void Core::free_memory(
   const bool is_batch_changed,
@@ -108,7 +114,7 @@ void Core::free_memory(
   const bool is_free_rx
 ) {
   // m_thread_pool need to be deleted first if anything rx related is deleted
-  if (is_batch_changed || is_free_rx) {
+  if (is_batch_changed || is_mem_size_changed || is_free_rx) {
     // ++ m_job_ref is to stop rx threads if any
     if (m_thread_pool) { ++ m_job_ref; delete m_thread_pool; m_thread_pool = nullptr; }
     if (m_vm) {
@@ -182,11 +188,13 @@ void Core::Execute(const AsyncProgressQueueWorker<char>::ExecutionProgress& prog
   if (ci.arch() == xmrig::ICpuInfo::ARCH_ZEN)
     xmrig::RxFix::setupMainLoopExceptionFrame();
 
+#if defined(__x86_64__) || defined(_M_X64)
   if (ci.has(xmrig::ICpuInfo::FLAG_SSE41)) rx_blake2b_compress = rx_blake2b_compress_sse41;
   if (ci.hasAVX2())                        rx_blake2b          = blake2b_avx2;
+#endif
 
   randomx_set_scratchpad_prefetch_mode(0);
-  randomx_set_huge_pages_jit(true);
+  randomx_set_huge_pages_jit(false);
   randomx_set_optimized_dataset_init(1);
   m_progress = &progress;
 

@@ -3,17 +3,17 @@
 "use strict";
 
 const path    = require("path");
-const fast_rx = require(path.join(__dirname, 'index.js'));
+const randomx = require(path.join(__dirname, 'index.js'));
 
 // compute core wrapper for cluster process fork
-if (fast_rx.cluster_process()) return;
+if (randomx.cluster_process()) return;
 
 let args = process.argv.slice(2);
 const job          = JSON.parse(args.shift());
 const result_hexes = args;
 
 function exit(code) {
-  fast_rx.messageWorkers({type: "close"});
+  randomx.messageWorkers({type: "close"});
   process.exitCode = code;
   return false;
 }
@@ -26,7 +26,7 @@ function messageHandler(msg) {
       // duplicate test result for batch size
       let result_hex2 = is_rx ? result_hexes[msg.value.rx_thread_id] : result_hexes[0];
       // for rx algos threads are encoded in batch
-      const batch = fast_rx.get_dev_batch(fast_rx.get_thread_dev(msg.thread_id, job.dev));
+      const batch = randomx.get_dev_batch(randomx.get_thread_dev(msg.thread_id, job.dev));
       const rx_batch = is_rx ? 1 : batch;
       let result_hex3 = result_hex2;
       for (let i = 1; i < rx_batch; ++ i) result_hex3 += " " + result_hex2;
@@ -46,5 +46,5 @@ function messageHandler(msg) {
       console.error("Unknown master thread message: " + JSON.stringify(msg));
   }
 }
-fast_rx.create_thread(messageHandler);
-fast_rx.messageWorkers({type: "test", job: job});
+randomx.create_thread(messageHandler);
+randomx.messageWorkers({type: "test", job: job});
