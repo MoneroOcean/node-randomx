@@ -2,14 +2,24 @@ on: push
 
 name: Test
 
+permissions:
+  contents: read
+
 jobs:
   test_lin:
     name: Ubuntu test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@master
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Setup npm
+        run: npm install -g npm@11.10.0
       - name: Test
         run: |
-          npm install
+          npm ci || npm install
           npm test
