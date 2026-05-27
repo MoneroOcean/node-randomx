@@ -294,4 +294,4 @@ AsyncWorker* create_worker(
   return new Core(data, complete, error_callback, options);
 }
 
-NODE_MODULE(NODE_GYP_MODULE_NAME, AsyncWorkerWrapper::Init)
+NODE_MODULE(node_randomx, AsyncWorkerWrapper::Init)
