@@ -14,8 +14,12 @@
 #include <set>
 #include <thread>
 #include <sstream>
+#include <limits>
+#include <cerrno>
+
 
 const unsigned MAX_CN_CPU_WAYS = 5;
+const unsigned MAX_RX_CPU_WAYS = 32;
 const unsigned MAX_BLOB_LEN    = 512;
 
 static const xmrig::ICpuInfo& ci = *xmrig::Cpu::info();
@@ -161,7 +165,18 @@ void Core::set_job(
   if (batch_parts.size() == 0 || batch_parts.size() > 2)
     throw std::string("Invalid dev specification");
   const std::string new_dev_str2 = batch_parts[0];
-  const unsigned new_batch = batch_parts.size() == 2 ? atoi(batch_parts[1].c_str()) : 1;
+  unsigned new_batch = 1;
+  if (batch_parts.size() == 2) {
+    const std::string& batch_str = batch_parts[1];
+    if (batch_str.empty()) throw std::string("Bad batch value");
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long parsed_batch = strtoul(batch_str.c_str(), &end, 10);
+    if (errno != 0 || end == batch_str.c_str() || *end != '\0' ||
+        parsed_batch == 0 || parsed_batch > std::numeric_limits<unsigned>::max())
+      throw std::string("Bad batch value");
+    new_batch = static_cast<unsigned>(parsed_batch);
+  }
   const DEV new_dev = new_algo_str.starts_with("rx/") ? DEV::RX_CPU : DEV::CPU;
 
   FN new_fn;
@@ -178,7 +193,7 @@ void Core::set_job(
         new_fn.cpu = ghostrider;
         new_nonce_offset = 76;
       } else {
-        if (new_batch > MAX_CN_CPU_WAYS) throw std::string("Bad CPU batch");
+        if (new_batch == 0 || new_batch > MAX_CN_CPU_WAYS) throw std::string("Bad CPU batch");
         new_fn.cpu = xmrig::CnHash::fn(
           new_algo,
           cpu_params2variant[new_batch - 1][ci.hasAES() ? 0 : 1],
@@ -190,6 +205,7 @@ void Core::set_job(
     }
 
     case DEV::RX_CPU: {
+      if (new_batch > MAX_RX_CPU_WAYS) throw std::string("Bad RX batch");
       if (new_seed_hex.empty()) throw std::string("No seed_hex job key");
       if (new_seed_hex.size() != HASH_LEN * 2) throw std::string("Bad seed length");
       if (!hex2bin(new_seed_hex.c_str(), HASH_LEN, new_seed)) throw std::string("Bad seed hex");
@@ -240,6 +256,8 @@ void Core::set_job(
       (was_rx_job && !is_rx_job) || (was_rx_job && is_rx_job && is_algo_changed)
     );
 
+    if (new_batch > std::numeric_limits<unsigned>::max() / new_mem_size)
+      throw std::string("Bad batch value");
     if (m_lpads == nullptr) m_lpads = alloc_huge_mem(new_batch * new_mem_size);
 
     if (new_dev == DEV::RX_CPU) {
