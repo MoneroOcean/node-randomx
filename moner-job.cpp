@@ -346,10 +346,8 @@ void Core::set_job(
   // start rx job compute threads
   if (new_dev == DEV::RX_CPU) {
     const unsigned job_ref = m_job_ref;
-    std::atomic<int> unique_counter{0};
     for (unsigned batch_id = 0; batch_id != m_batch; ++batch_id) m_thread_pool->push(
-      [=, &m_job_ref = m_job_ref, &m_hash_count = m_hash_count, &unique_counter, new_inputs, new_input_hexes](int) {
-        const int thread_id = unique_counter.fetch_add(1);
+      [=, &m_job_ref = m_job_ref, &m_hash_count = m_hash_count, new_inputs, new_input_hexes](int thread_id) {
         try {
           alignas(16) uint8_t  input[MAX_BLOB_LEN];
           alignas(16) uint8_t  output[HASH_LEN];
