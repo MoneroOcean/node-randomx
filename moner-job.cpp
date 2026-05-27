@@ -220,6 +220,7 @@ void Core::set_job(
     if (!hex2bin(new_input_hex.c_str(), new_input_len, new_inputs->back().data()))
       throw std::string("Bad input hex");
   }
+  if (new_dev != DEV::RX_CPU) m_input_cn_len = (*new_inputs)[0].size();
 
   // new hashing setup (all errors were checked above)
   ++ m_job_ref; // used to stop old m_thread_pool jobs
@@ -301,7 +302,6 @@ void Core::set_job(
         }
       }
     } else { // setup cn stuff
-      m_input_cn_len = (*new_inputs)[0].size();
       if (m_input_cn == nullptr) m_input_cn = static_cast<uint8_t*>(alloc_mem(new_batch * MAX_BLOB_LEN));
       if (m_output == nullptr) m_output = static_cast<uint8_t*>(alloc_mem(new_batch * HASH_LEN));
       if (m_spads == nullptr) m_spads = alloc_mem(new_batch * 200);
