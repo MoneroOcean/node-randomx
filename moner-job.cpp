@@ -202,26 +202,22 @@ void Core::set_job(
     }
   }
 
-  // need static here so it will be alive in rx threads
-  static std::vector<std::string> new_input_hexes;
-  new_input_hexes = split_input(new_input_hex);
+  auto new_input_hexes = std::make_shared<std::vector<std::string>>(split_input(new_input_hex));
   if (new_dev == DEV::RX_CPU) {
     // duplicate one input accross all thread inputs (batches)
-    if (new_input_hexes.size() == 1 && new_batch > 1) new_input_hexes.assign(new_batch, new_input_hex);
-    else if (new_input_hexes.size() != new_batch) throw std::string("Number of inputs do not match batch number");
+    if (new_input_hexes->size() == 1 && new_batch > 1) new_input_hexes->assign(new_batch, new_input_hex);
+    else if (new_input_hexes->size() != new_batch) throw std::string("Number of inputs do not match batch number");
   } else {
-    if (new_input_hexes.size() != 1) throw std::string("Multiple inputs are only supported for RX algos");
+    if (new_input_hexes->size() != 1) throw std::string("Multiple inputs are only supported for RX algos");
   }
 
-  // need static here so it will be alive in rx threads
-  static std::vector<std::vector<uint8_t> > new_inputs;
-  new_inputs.clear();
-  for (const auto& new_input_hex: new_input_hexes) {
+  auto new_inputs = std::make_shared<std::vector<std::vector<uint8_t>>>();
+  for (const auto& new_input_hex: *new_input_hexes) {
     const unsigned new_input_len = new_input_hex.size() >> 1;
     if ((new_input_hex.size() & 1) || new_input_len > MAX_BLOB_LEN)
       throw std::string("Bad input length");
-    new_inputs.emplace_back(new_input_len);
-    if (!hex2bin(new_input_hex.c_str(), new_input_len, new_inputs.back().data()))
+    new_inputs->emplace_back(new_input_len);
+    if (!hex2bin(new_input_hex.c_str(), new_input_len, new_inputs->back().data()))
       throw std::string("Bad input hex");
   }
 
@@ -305,7 +301,7 @@ void Core::set_job(
         }
       }
     } else { // setup cn stuff
-      m_input_cn_len = new_inputs[0].size();
+      m_input_cn_len = (*new_inputs)[0].size();
       if (m_input_cn == nullptr) m_input_cn = static_cast<uint8_t*>(alloc_mem(new_batch * MAX_BLOB_LEN));
       if (m_output == nullptr) m_output = static_cast<uint8_t*>(alloc_mem(new_batch * HASH_LEN));
       if (m_spads == nullptr) m_spads = alloc_mem(new_batch * 200);
@@ -334,18 +330,18 @@ void Core::set_job(
     const unsigned job_ref = m_job_ref;
     std::atomic<int> unique_counter{0};
     for (unsigned batch_id = 0; batch_id != m_batch; ++batch_id) m_thread_pool->push(
-      [=, &m_job_ref = m_job_ref, &m_hash_count = m_hash_count, &unique_counter](int) {
+      [=, &m_job_ref = m_job_ref, &m_hash_count = m_hash_count, &unique_counter, new_inputs, new_input_hexes](int) {
         const int thread_id = unique_counter.fetch_add(1);
         try {
           alignas(16) uint8_t  input[MAX_BLOB_LEN];
           alignas(16) uint8_t  output[HASH_LEN];
           alignas(16) uint64_t temp_hash[8];
           uint32_t nonce = new_nonce + new_thread_id * m_batch + batch_id;
-          if (m_is_nicehash) nonce |= *get_nonce(new_inputs[thread_id].data()) & 0xFF000000;
+          if (m_is_nicehash) nonce |= *get_nonce((*new_inputs)[thread_id].data()) & 0xFF000000;
           const unsigned nonce_step = new_thread_num * m_batch;
           unsigned hashrate_update_counter = HASHRATE_COUNTER_INTERVAL;
-	  const unsigned input_len = new_inputs[thread_id].size();
-          memcpy(input, new_inputs[thread_id].data(), input_len);
+	  const unsigned input_len = (*new_inputs)[thread_id].size();
+          memcpy(input, (*new_inputs)[thread_id].data(), input_len);
           if (is_set_nonce) { *get_nonce(input) = nonce; nonce += nonce_step; }
           if (!is_set_nonce) {
             randomx_calculate_hash(m_vm[thread_id], input, input_len, output);
@@ -353,7 +349,7 @@ void Core::set_job(
             char hash[HASH_LEN*2+1];
             MessageValues values;
             values["result"] = hash_bin2hex(output, hash);
-            values["input"]  = new_input_hexes[thread_id];
+            values["input"]  = (*new_input_hexes)[thread_id];
             values["rx_thread_id"] = std::to_string(thread_id);
             values["job_id"] = job_id;
             send_msg("test", values);
@@ -376,7 +372,7 @@ void Core::set_job(
               char hash[HASH_LEN*2+1];
               MessageValues values;
               values["result"] = hash_bin2hex(output, hash);
-              values["input"]  = new_input_hexes[thread_id];
+              values["input"]  = (*new_input_hexes)[thread_id];
 	      values["rx_thread_id"] = std::to_string(thread_id);
               values["job_id"] = job_id;
               send_msg("test", values);
@@ -402,10 +398,10 @@ void Core::set_job(
     );
   } else {
     m_nonce = new_nonce + new_thread_id;
-    if (m_is_nicehash) m_nonce |= *get_nonce(new_inputs[0].data()) & 0xFF000000;
+    if (m_is_nicehash) m_nonce |= *get_nonce((*new_inputs)[0].data()) & 0xFF000000;
     m_nonce_step = new_thread_num;
     for (unsigned i = 0; i != m_batch; ++i) {
-      memcpy(m_input_cn + m_input_cn_len*i, new_inputs[0].data(), m_input_cn_len);
+      memcpy(m_input_cn + m_input_cn_len*i, (*new_inputs)[0].data(), m_input_cn_len);
       if (is_set_nonce) { *get_nonce_cn(i) = m_nonce; m_nonce += m_nonce_step; }
     }
   }
