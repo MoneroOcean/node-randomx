@@ -1,6 +1,6 @@
 // Copyright GNU GPLv3 (c) 2023-2025 MoneroOcean <support@moneroocean.stream>
 
-#include "moner-core.h"
+#include "core.h"
 
 #include "backend/cpu/Cpu.h"
 #include "crypto/cn/CnCtx.h"
@@ -19,8 +19,13 @@
 
 
 const unsigned MAX_CN_CPU_WAYS = 5;
-const unsigned MAX_RX_CPU_WAYS = 32;
+const unsigned MIN_RX_CPU_WAYS_LIMIT = 32;
 const unsigned MAX_BLOB_LEN    = 512;
+
+static unsigned get_rx_cpu_ways_limit() {
+  const unsigned thread_count = std::thread::hardware_concurrency();
+  return thread_count > MIN_RX_CPU_WAYS_LIMIT ? thread_count : MIN_RX_CPU_WAYS_LIMIT;
+}
 
 static const xmrig::ICpuInfo& ci = *xmrig::Cpu::info();
 
@@ -205,7 +210,7 @@ void Core::set_job(
     }
 
     case DEV::RX_CPU: {
-      if (new_batch > MAX_RX_CPU_WAYS) throw std::string("Bad RX batch");
+      if (new_batch > get_rx_cpu_ways_limit()) throw std::string("Bad RX batch");
       if (new_seed_hex.empty()) throw std::string("No seed_hex job key");
       if (new_seed_hex.size() != HASH_LEN * 2) throw std::string("Bad seed length");
       if (!hex2bin(new_seed_hex.c_str(), HASH_LEN, new_seed)) throw std::string("Bad seed hex");

@@ -1,8 +1,8 @@
 { "targets": [
   { "target_name": "node-randomx",
     "sources": [
-      "moner-core.cpp",
-      "moner-job.cpp",
+      "core.cpp",
+      "job.cpp",
 
       "xmrig/crypto/common/VirtualMemory.cpp",
       "xmrig/crypto/common/VirtualMemory_unix.cpp",

@@ -7,8 +7,21 @@ const events  = require("events");
 const cluster = require("cluster");
 const fs      = require('fs');
 
-const thread_id = cluster.isMaster ? "master" : parseInt(process.env["thread_id"]);
-let worker_ids = []; // active worker ids (cluster.workers can contain not yet closed workers)
+const thread_id = cluster.isMaster ? "master" : parseInt(process.env["thread_id"], 10);
+let worker_ids = []; // active cluster worker ids (cluster.workers can contain not yet closed workers)
+const worker_thread_ids = new Map(); // cluster worker id -> logical compute thread id
+
+function forget_thread(worker_id) {
+  worker_ids = worker_ids.filter((id) => id !== worker_id);
+  worker_thread_ids.delete(worker_id);
+}
+
+function next_thread_id() {
+  const used_thread_ids = new Set(worker_thread_ids.values());
+  let next_id = 0;
+  while (used_thread_ids.has(next_id)) ++next_id;
+  return next_id;
+}
 
 module.exports.create_core = function() {
   const deploy_path = path.join(__dirname, "./node-randomx.node");
@@ -70,7 +83,15 @@ module.exports.messageWorkers = function(msg) {
 };
 
 module.exports.record_thread = function(thread_id) {
-  if (!worker_ids.includes(thread_id)) worker_ids.push(thread_id);
+  if (worker_ids.includes(thread_id)) return;
+  worker_ids.push(thread_id);
+
+  const worker = cluster.workers && cluster.workers[thread_id];
+  if (worker) {
+    worker.once("exit", function() {
+      setImmediate(function() { forget_thread(thread_id); });
+    });
+  }
 };
 
 module.exports.is_compute_thread = function(thread_id) {
@@ -78,9 +99,12 @@ module.exports.is_compute_thread = function(thread_id) {
 };
 
 module.exports.create_thread = function(messageHandler) {
-  let thread = cluster.fork({thread_id: 0});
+  const compute_thread_id = next_thread_id();
+  let thread = cluster.fork({thread_id: String(compute_thread_id)});
+  worker_thread_ids.set(thread.id, compute_thread_id);
   thread.on("message", messageHandler);
   module.exports.record_thread(thread.id);
+  return thread;
 };
 
 // get thread dev stripping ^thread specification from it

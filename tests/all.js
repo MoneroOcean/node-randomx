@@ -104,6 +104,37 @@ function test(job, result) {
   });
 }
 
+function testClusterThreadIds() {
+  const args = [path.join("tests", "thread-ids.js")];
+
+  return new Promise((resolve, reject) => {
+    child_process.execFile(
+      process.execPath,
+      args,
+      { cwd: ROOT_DIR, timeout: 30 * 1000, maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => {
+        const output = `${stdout}${stderr}`;
+
+        if (error) {
+          const reason = error.killed
+            ? "Timed out"
+            : error.signal
+              ? `Signal ${error.signal}`
+              : `Exit code ${error.code}`;
+          reject(new Error([
+            `cluster worker thread ids failed: ${reason}`,
+            `$ ${commandText(args)}`,
+            output.trimEnd(),
+          ].filter(Boolean).join("\n")));
+          return;
+        }
+
+        resolve();
+      }
+    );
+  });
+}
+
 let tests = [
   [ test, { algo: "rx/0", dev: "cpu*2", blob_hex: "5468697320697320612074657374\n00" },
     [ "38f638606c730dd6f271d037556b83988c71acc6980e22e25271b22389ecfce6",
@@ -181,6 +212,8 @@ let tests = [
 ];
 
 ensureNativeBuild();
+
+nodeTest("cluster worker thread ids", testClusterThreadIds);
 
 for (const [runner, job, result] of tests) {
   const normalizedJob = normalizeJob(job);
