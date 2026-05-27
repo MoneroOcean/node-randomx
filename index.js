@@ -70,8 +70,7 @@ module.exports.messageWorkers = function(msg) {
 };
 
 module.exports.record_thread = function(thread_id) {
-  worker_ids = []
-  worker_ids.push(thread_id);
+  if (!worker_ids.includes(thread_id)) worker_ids.push(thread_id);
 };
 
 module.exports.is_compute_thread = function(thread_id) {
