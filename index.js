@@ -64,7 +64,7 @@ module.exports.cluster_process = function() {
   process.on("message", function(msg) {
     switch (msg.type) {
       case "job": case "bench": case "test":
-        // find dev for this specific thread from msg.job.dev list
+        // tag the job with this worker's logical thread id so the core can pick its device
         msg.job.thread_id = thread_id;
         compute_core.emit_to(msg.type, msg.job);
         break;
