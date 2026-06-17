@@ -135,7 +135,7 @@ function testClusterThreadIds() {
   });
 }
 
-let tests = [
+const tests = [
   [ test, { algo: "rx/0", dev: "cpu*2", blob_hex: "5468697320697320612074657374\n00" },
     [ "38f638606c730dd6f271d037556b83988c71acc6980e22e25271b22389ecfce6",
       "f4d7978d385b7d79788aed32cf9e08d2782bc3c47ab50cae69c0dfba3a3bd1d7"
