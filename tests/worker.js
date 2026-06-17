@@ -21,7 +21,7 @@ function exit(code) {
 // handles messages sent to the master thread from worker threads
 function messageHandler(msg) {
   switch (msg.type) {
-    case "test":
+    case "test": {
       const is_rx = job.algo.includes("rx/");
       // duplicate test result for batch size
       let result_hex2 = is_rx ? result_hexes[msg.value.rx_thread_id] : result_hexes[0];
@@ -37,6 +37,7 @@ function messageHandler(msg) {
         console.log("PASSED");
         return exit(0);
       }
+    }
 
     case "error":
       console.error("Compute core error: " + JSON.stringify(msg.value));

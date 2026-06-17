@@ -112,7 +112,7 @@ module.exports.get_thread_dev = function(thread_id, devs) {
   const dev_parts = devs.split(",");
   let thread_count = 0;
   for (const dev_part of dev_parts) {
-    const m = dev_part.match(/^([^\^]+)\^(\d+)$/);
+    const m = dev_part.match(/^([^^]+)\^(\d+)$/);
     thread_count += m ? parseInt(m[2]) : 1;
     if (thread_id < thread_count) return m ? m[1] : dev_part;
   }
