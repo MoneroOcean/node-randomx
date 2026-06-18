@@ -211,6 +211,9 @@ const tests = [
   ],
 ];
 
+// pure-JS unit tests for the device-spec helpers (no native addon required)
+require("./dev-spec.js");
+
 ensureNativeBuild();
 
 nodeTest("cluster worker thread ids", testClusterThreadIds);

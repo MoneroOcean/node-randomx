@@ -122,6 +122,9 @@ module.exports.get_thread_dev = function(thread_index, devs) {
 
 // return dev *batch value
 module.exports.get_dev_batch = function(dev) {
+  // get_thread_dev returns null when no device covers the thread index; degrade
+  // to the default batch instead of throwing a TypeError on null.match(...)
+  if (dev == null) return 1;
   const m = dev.match(/\*(\d+)$/);
   return m ? parseInt(m[1]) : 1;
 };
