@@ -116,7 +116,7 @@ module.exports.get_thread_dev = function(thread_index, devs) {
     thread_count += m ? parseInt(m[2]) : 1;
     if (thread_index < thread_count) return m ? m[1] : dev_part;
   }
-  console.error(`Can't find ${  thread_index  } thread device in ${  devs  } specification`);
+  console.error(`Can't find ${thread_index} thread device in ${devs} specification`);
   return null;
 };
 
