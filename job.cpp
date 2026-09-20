@@ -351,32 +351,33 @@ void Core::set_job(
   // start rx job compute threads
   if (new_dev == DEV::RX_CPU) {
     const unsigned job_ref = m_job_ref;
+    // A pool worker may run multiple tasks; batch_id owns the input/result slot, worker_id owns the VM.
     for (unsigned batch_id = 0; batch_id != m_batch; ++batch_id) m_thread_pool->push(
-      [=, &m_job_ref = m_job_ref, &m_hash_count = m_hash_count, new_inputs, new_input_hexes](int thread_id) {
+      [=, &m_job_ref = m_job_ref, &m_hash_count = m_hash_count, new_inputs, new_input_hexes](int worker_id) {
         try {
           alignas(16) uint8_t  input[MAX_BLOB_LEN];
           alignas(16) uint8_t  output[HASH_LEN];
           alignas(16) uint64_t temp_hash[8];
           uint32_t nonce = new_nonce + new_thread_id * m_batch + batch_id;
-          if (m_is_nicehash) nonce |= *get_nonce((*new_inputs)[thread_id].data()) & 0xFF000000;
+          if (m_is_nicehash) nonce |= *get_nonce((*new_inputs)[batch_id].data()) & 0xFF000000;
           const unsigned nonce_step = new_thread_num * m_batch;
           unsigned hashrate_update_counter = HASHRATE_COUNTER_INTERVAL;
-	  const unsigned input_len = (*new_inputs)[thread_id].size();
-          memcpy(input, (*new_inputs)[thread_id].data(), input_len);
+	  const unsigned input_len = (*new_inputs)[batch_id].size();
+          memcpy(input, (*new_inputs)[batch_id].data(), input_len);
           if (is_set_nonce) { *get_nonce(input) = nonce; nonce += nonce_step; }
           if (!is_set_nonce) {
-            randomx_calculate_hash(m_vm[thread_id], input, input_len, output);
+            randomx_calculate_hash(m_vm[worker_id], input, input_len, output);
 
             char hash[HASH_LEN*2+1];
             MessageValues values;
             values["result"] = hash_bin2hex(output, hash);
-            values["input"]  = (*new_input_hexes)[thread_id];
-            values["rx_thread_id"] = std::to_string(thread_id);
+            values["input"]  = (*new_input_hexes)[batch_id];
+            values["rx_thread_id"] = std::to_string(batch_id);
             values["job_id"] = job_id;
             send_msg("test", values);
             return;
           }
-          randomx_calculate_hash_first(m_vm[thread_id], temp_hash, input, input_len);
+          randomx_calculate_hash_first(m_vm[worker_id], temp_hash, input, input_len);
           while (job_ref == m_job_ref) { // continue until we get a new job
             uint32_t* const pnonce = get_nonce(input);
             const uint32_t prev_nonce = nonce;
@@ -387,14 +388,14 @@ void Core::set_job(
               send_error("Nonce overflow");
               break; // will also effectively stops this thread
             }
-            randomx_calculate_hash_next(m_vm[thread_id], temp_hash, input, input_len, output);
+            randomx_calculate_hash_next(m_vm[worker_id], temp_hash, input, input_len, output);
 
             if (!is_set_nonce) { // test job
               char hash[HASH_LEN*2+1];
               MessageValues values;
               values["result"] = hash_bin2hex(output, hash);
-              values["input"]  = (*new_input_hexes)[thread_id];
-	      values["rx_thread_id"] = std::to_string(thread_id);
+              values["input"]  = (*new_input_hexes)[batch_id];
+	      values["rx_thread_id"] = std::to_string(batch_id);
               values["job_id"] = job_id;
               send_msg("test", values);
               break;
